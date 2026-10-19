@@ -12,6 +12,9 @@ import ObjectiveC
 /// The connection class and its methods are private. Each hook is installed only when the method exists with the
 /// expected signature; anything missing is skipped (and `isCapturing` reports it), never forced. Background sessions
 /// run in another process and are never seen; WebSocket tasks are skipped.
+///
+/// The hooks are compiled only with the DEBUG flag, so a Release or App Store build of an app that links this package
+/// contains none of the private names or calls: `install()` returns false there (`CloakProxyKit.isRecordingCompiledIn`).
 enum URLSessionCapture {
     struct Settings {
         var enabled = false
@@ -79,6 +82,8 @@ enum URLSessionCapture {
     }
 
     // MARK: Hooks
+
+    #if DEBUG
 
     private final class Original {
         let imp: IMP
@@ -170,6 +175,10 @@ enum URLSessionCapture {
         }
         return true
     }
+    #else
+    /// Release builds have no hooks: the code that reads URLSession's internals is compiled only with DEBUG.
+    private static func installHooks() -> Bool { false }
+    #endif
 }
 
 final class UploadBody {

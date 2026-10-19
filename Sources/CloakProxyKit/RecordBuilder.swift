@@ -78,10 +78,15 @@ enum RecordBuilder {
     }
 
     /// The task's timings without a delegate. URLSession only hands metrics to delegates, but the task keeps them;
-    /// this private getter returns them as public URLSessionTaskMetrics. Nil when it isn't there.
+    /// this private getter returns them as public URLSessionTaskMetrics. Nil when it isn't there, and always in builds
+    /// without DEBUG, which don't contain the private getter's name.
     static func taskMetrics(of task: URLSessionTask) -> URLSessionTaskMetrics? {
+        #if DEBUG
         let selector = NSSelectorFromString("_incompleteTaskMetrics")
         guard task.responds(to: selector) else { return nil }
         return task.perform(selector)?.takeUnretainedValue() as? URLSessionTaskMetrics
+        #else
+        return nil
+        #endif
     }
 }

@@ -19,7 +19,7 @@ the **CloakProxyKit** library to your app target.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/subcloak/CloakProxyKit", from: "0.3.0"),
+    .package(url: "https://github.com/subcloak/CloakProxyKit", from: "0.4.0"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [.product(name: "CloakProxyKit", package: "CloakProxyKit")]),
@@ -99,10 +99,11 @@ CloakProxyKit.start(options)
 | `ignoredHosts` | none | Requests to these hosts aren't recorded. `example.com` covers its subdomains; `*.example.com` only the subdomains. |
 | `appName` | the bundle's display name | The name shown in Cloak Proxy. |
 | `appIcon` | the app icon | A square PNG to show instead. Command-line tools have no icon of their own. |
-| `enabledInReleaseBuilds` | `false` | Also run in builds without the `DEBUG` flag. |
+| `enabledInReleaseBuilds` | `false` | Deprecated since 0.4.0, and has no effect: Release builds don't contain the recording code. |
 
 Also available: `CloakProxyKit.stop()`, `CloakProxyKit.state` (`searching`, `connecting`, `waitingForApproval`,
-`connected`, `blocked`), `CloakProxyKit.unsentCount` and `CloakProxyKit.isCapturing`.
+`connected`, `blocked`), `CloakProxyKit.unsentCount`, `CloakProxyKit.isCapturing` and
+`CloakProxyKit.isRecordingCompiledIn` (false in Release builds).
 
 ## How it works
 
@@ -123,9 +124,11 @@ Also available: `CloakProxyKit.stop()`, `CloakProxyKit.state` (`searching`, `con
 
 ## Safety
 
-- In builds without `DEBUG`, `start()` does nothing unless you set `enabledInReleaseBuilds`. Better still, keep the
-  call inside `#if DEBUG` as above. The code that reads URLSession's internals is still linked into a Release build
-  that includes the package; leave the package out of App Store builds if you can.
+- **Debug builds only, at compile time.** The code that reads URLSession's private internals is compiled only when the
+  package is built with the `DEBUG` flag (Xcode's Debug configuration, or `swift build` without `-c release`). A
+  Release or App Store build of your app contains none of it: no private class or method names, and `start()` does
+  nothing (`isRecordingCompiledIn` is `false`). Keep the call inside `#if DEBUG` as above anyway.
+  `scripts/check-release.sh` runs the tests in both configurations and checks a Release build for the private names.
 - Nothing throws, blocks the app or changes a request. Recording work is a copy and a lock; sending happens on the
   SDK's own queue. If the Mac isn't there, requests wait in the bounded buffer and the oldest are dropped.
 - Anyone on your network can see the Bonjour advertisement, and something pretending to be Cloak Proxy could accept
@@ -153,7 +156,8 @@ Also available: `CloakProxyKit.stop()`, `CloakProxyKit.state` (`searching`, `con
 `--host 127.0.0.1 --port 9092` to skip Bonjour, `--base <url>` to use another server, and `--icon <file.png>` to give
 it an icon.
 
-`swift test` runs the package's tests on macOS. To build for iOS:
+`swift test` runs the package's tests on macOS; `scripts/check-release.sh` also runs them in Release and checks the
+Release library contains none of the private names. To build for iOS:
 
 ```bash
 xcodebuild -scheme CloakProxyKit -destination 'generic/platform=iOS' build

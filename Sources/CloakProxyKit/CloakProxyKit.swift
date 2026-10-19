@@ -15,10 +15,14 @@ import Foundation
 ///
 /// The app finds Cloak Proxy over Bonjour on the local network and waits for you to allow it on the Mac. Until then,
 /// and whenever the Mac is away, finished requests wait in a bounded buffer. Nothing here throws, blocks the app or
-/// changes its requests. In Release builds `start()` does nothing unless `Options.enabledInReleaseBuilds` is set.
+/// changes its requests.
+///
+/// The recording code reads URLSession's private internals, so it's compiled only with the DEBUG flag (Xcode's Debug
+/// configuration, `swift build` without `-c release`). In Release and App Store builds the package contains none of it
+/// and `start()` does nothing; `isRecordingCompiledIn` says which kind of build this is.
 public enum CloakProxyKit {
     /// The SDK's version, sent to the Mac.
-    public static let version = "0.3.0"
+    public static let version = "0.4.0"
 
     public struct Options {
         /// Connect only to the Mac with this name (its Bonjour name, usually the Mac's name in Sharing settings).
@@ -41,8 +45,14 @@ public enum CloakProxyKit {
         public var appName: String?
         /// A square PNG to show instead of the app icon. Command-line tools have no icon of their own.
         public var appIcon: Data?
-        /// Run in builds without the DEBUG flag too. Off: Release builds send nothing.
-        public var enabledInReleaseBuilds: Bool
+        /// No longer has any effect: since 0.4.0 the recording code is compiled only with DEBUG, so Release builds
+        /// can't record whatever this says.
+        @available(*, deprecated, message: "Release builds of CloakProxyKit no longer contain the recording code, so this has no effect.")
+        public var enabledInReleaseBuilds: Bool {
+            get { releaseBuildsRequested }
+            set { releaseBuildsRequested = newValue }
+        }
+        private var releaseBuildsRequested = false
 
         public init(macName: String? = nil, macFingerprint: String? = nil, host: String? = nil, port: Int = 9092,
                     maxBodySize: Int = 1 << 20, maxBufferedRequests: Int = 500, maxBufferedBytes: Int = 16 << 20,
@@ -57,7 +67,7 @@ public enum CloakProxyKit {
             self.ignoredHosts = ignoredHosts
             self.appName = appName
             self.appIcon = appIcon
-            self.enabledInReleaseBuilds = enabledInReleaseBuilds
+            self.releaseBuildsRequested = enabledInReleaseBuilds
         }
     }
 
@@ -73,12 +83,22 @@ public enum CloakProxyKit {
         case blocked(mac: String)
     }
 
-    /// Starts recording URLSession traffic and sending it to Cloak Proxy. Calling it again restarts with new options.
-    public static func start(_ options: Options = Options()) {
-        #if !DEBUG
-        guard options.enabledInReleaseBuilds else { return }
+    /// Whether this build contains the recording code: true only when the package was compiled with DEBUG. In a
+    /// Release or App Store build it's false, and the build has no code that reads URLSession's internals.
+    public static let isRecordingCompiledIn: Bool = {
+        #if DEBUG
+        return true
+        #else
+        return false
         #endif
+    }()
+
+    /// Starts recording URLSession traffic and sending it to Cloak Proxy. Calling it again restarts with new options.
+    /// Does nothing in builds without DEBUG (`isRecordingCompiledIn`).
+    public static func start(_ options: Options = Options()) {
+        #if DEBUG
         KitEngine.shared.start(options)
+        #endif
     }
 
     /// Stops recording and disconnects. Requests not yet sent are dropped.

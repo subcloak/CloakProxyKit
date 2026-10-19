@@ -20,6 +20,9 @@ final class CloakProxyKitTests: XCTestCase {
     }
 
     func testCapturesURLSessionTrafficWithoutChangingIt() async throws {
+        guard CloakProxyKit.isRecordingCompiledIn else {
+            throw XCTSkip("Release builds don't contain the recording code; testReleaseBuildsContainNoRecording covers them.")
+        }
         let server = try TestHTTPServer()
         defer { server.stop() }
         XCTAssertTrue(URLSessionCapture.install(), "the hooks install on this OS")
@@ -100,6 +103,25 @@ final class CloakProxyKitTests: XCTestCase {
         _ = try await session.data(from: base.appendingPathComponent("json"))
         try await Task.sleep(nanoseconds: 300_000_000)
         XCTAssertEqual(collector.all.count, 5, "nothing recorded while off")
+    }
+
+    /// The private-API hooks exist only with DEBUG. `swift test` covers the Debug side; scripts/check-release.sh runs
+    /// these tests in Release too and checks the compiled library holds none of the private names.
+    func testReleaseBuildsContainNoRecording() async throws {
+        let task = URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:9/")!)
+        #if DEBUG
+        XCTAssertTrue(CloakProxyKit.isRecordingCompiledIn)
+        XCTAssertTrue(URLSessionCapture.install())
+        #else
+        XCTAssertFalse(CloakProxyKit.isRecordingCompiledIn)
+        XCTAssertFalse(URLSessionCapture.install(), "no hooks in a Release build")
+        XCTAssertNil(RecordBuilder.taskMetrics(of: task), "no private metrics getter in a Release build")
+        CloakProxyKit.start(CloakProxyKit.Options(host: "127.0.0.1", port: 9, enabledInReleaseBuilds: true))
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(CloakProxyKit.state, .stopped, "start() does nothing, even when asked to run in Release")
+        XCTAssertFalse(CloakProxyKit.isCapturing)
+        #endif
+        task.cancel()
     }
 
     func testBufferIsBoundedAndAcknowledged() {
